@@ -7,7 +7,7 @@ import glob
 import pickle
 import numpy as np
 
-from pytorch_i3d import InceptionI3d
+from i3d_model import InceptionI3d
 from perform_encoding import get_fmri
 from torch.utils.data import Dataset
 from torch import nn
@@ -64,10 +64,13 @@ def cross_validation_train():
     args = parser.parse_args()
 
     # Configuration options
-    k_folds = 10
-    num_epochs = 50
     ROI = args.roi
     subject = args.sub
+    k_folds = 10
+    num_epochs = 1000
+    hidden_sizes = [1024, 1024, 1024, 1024]
+    batch_size_train = 32
+    batch_size_test = 100
     loss_function = nn.MSELoss()
     work_dir = args.work_dir + "/sub{}/{}".format(subject, ROI)
 
@@ -90,7 +93,7 @@ def cross_validation_train():
     )
 
     # Env
-    input_dim = 7168
+    input_dim = 7168    # TODO: Fix hardcoding
     output_dim = train_dataset.fmri_data.shape[1]
     device = torch.device('cpu')
     if torch.cuda.is_available():
@@ -120,13 +123,13 @@ def cross_validation_train():
         # Define data loaders for training and testing data in this fold
         trainloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=32, sampler=train_subsampler)
+            batch_size=batch_size_train, sampler=train_subsampler)
         testloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=100, sampler=test_subsampler)
+            batch_size=batch_size_test, sampler=test_subsampler)
 
         # Init the neural network
-        network = SimpleMLP(input_dim=input_dim, output_dim=output_dim, hidden_sizes=[2048, 2048],
+        network = SimpleMLP(input_dim=input_dim, output_dim=output_dim, hidden_sizes=hidden_sizes,
                             activation='relu', device=device)
         # network.apply(reset_weights)
 
@@ -199,7 +202,7 @@ def cross_validation_train():
 
 def save_activations():
     mode = "rgb"
-    work_dir = "./i3d_dir/activations/mean"
+    work_dir = "./i3d_dir/activations"
 
     if mode == 'flow':
         fp = "/Users/gautham/src/pytorch-i3d/models/flow_imagenet.pt"
@@ -225,7 +228,7 @@ def save_activations():
         video_frames = torch.unsqueeze(video_frames, dim=0)
         total_frames = video_frames.shape[2]
         indices = np.linspace(0, total_frames - 1, 60, dtype=np.int)
-        video_frames = video_frames[:, :, indices, :, :] / 255.
+        video_frames = ((video_frames[:, :, indices, :, :] / 255.) * 2) - 1
 
         # pred = i3d(video_frames)
         # phi = torch.mean(pred, axis=-1)
@@ -239,5 +242,5 @@ def save_activations():
 
 
 if __name__ == '__main__':
-    # save_activations()
-    cross_validation_train()
+    save_activations()
+    # cross_validation_train()
