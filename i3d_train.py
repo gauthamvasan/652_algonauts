@@ -22,6 +22,14 @@ from pyramid_pooling import SpatialPyramidPooling, TemporalPyramidPooling
 
 ROIs = ['LOC','FFA','STS','EBA','PPA','V1','V2','V3','V4']
 
+def set_one_thread():
+  '''
+  N.B: Pytorch over-allocates resources and hogs CPU, which makes experiments very slow!
+  Set number of threads for pytorch to 1 to avoid this issue. This is a temporary workaround.
+  '''
+  os.environ['OMP_NUM_THREADS'] = '1'
+  os.environ['MKL_NUM_THREADS'] = '1'
+  torch.set_num_threads(1)
 
 class I3DAlgonautsDataSet(Dataset):
     END_POINTS = ['MaxPool3d_2a_3x3', 'MaxPool3d_3a_3x3', 'MaxPool3d_4a_3x3', 'MaxPool3d_5a_2x2', 'Mixed_5b',
@@ -301,6 +309,7 @@ def save_activations():
 
 
 if __name__ == '__main__':
+    set_one_thread()    # Handle torch shenanigans
     tic = time.time()
     # save_activations()
     # print("Activation generation took: {:.3f}".format(time.time() - tic))
