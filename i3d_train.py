@@ -177,16 +177,18 @@ def cross_validation_train():
             for i, data in enumerate(trainloader, 0):
 
                 # Get inputs
-                inputs, targets = data
+                inputs, fmri_train = data
+                inputs = inputs.to(device)
+                fmri_train = fmri_train.to(device)
 
                 # Zero the gradients
                 optimizer.zero_grad()
 
                 # Perform forward pass
-                outputs = network(inputs)
+                pred_fmri = network(inputs)
 
                 # Compute loss
-                loss = loss_function(outputs, targets)
+                loss = loss_function(pred_fmri, fmri_train)
 
                 # Perform backward pass
                 loss.backward()
