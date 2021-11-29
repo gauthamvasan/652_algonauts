@@ -191,9 +191,6 @@ def cross_validation_train():
         # Process is complete.
         print('Training process has finished. Saving trained model.')
 
-        # Print about testing
-        print('Starting testing')
-
         # Saving the model
         save_path = os.path.join(work_dir, f'./model-fold-{fold}.pth')
         torch.save(network.state_dict(), save_path)
