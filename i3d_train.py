@@ -13,7 +13,7 @@ from torch.autograd import Variable
 from perform_encoding import get_fmri
 from torch.utils.data import Dataset
 from torch import nn
-from torchvision.datasets import MNIST
+from mlp_models import SimpleMLP
 from torch.utils.data import DataLoader, ConcatDataset
 from torchvision import transforms
 from sklearn.model_selection import KFold
@@ -21,38 +21,6 @@ from utils.ols import vectorized_correlation
 
 
 ROIs = ['LOC','FFA','STS','EBA','PPA','V1','V2','V3','V4']
-
-def reset_weights(m):
-    '''
-      Try resetting model weights to avoid
-      weight leakage.
-    '''
-    for layer in m.children():
-        if hasattr(layer, 'reset_parameters'):
-            print(f'Reset trainable parameters of layer = {layer}')
-            layer.reset_parameters()
-
-
-class SimpleMLP(nn.Module):
-    '''
-      Simple Convolutional Neural Network
-    '''
-
-    def __init__(self, input_dim, output_dim, device=torch.device('cpu')):
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(input_dim, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, output_dim)
-        )
-        self.device = device
-        self.to(device)
-
-    def forward(self, x):
-        x = x.to(self.device)
-        return self.layers(x)
 
 
 class AlgonautsDataSet(Dataset):
@@ -94,7 +62,7 @@ def cross_validation_train():
 
     # Configuration options
     k_folds = 10
-    num_epochs = 1000
+    num_epochs = 50
     ROI = 'V1'
     subject = '04'
     loss_function = nn.MSELoss()
@@ -121,6 +89,8 @@ def cross_validation_train():
     input_dim = 7168
     output_dim = train_dataset.fmri_data.shape[1]
     device = torch.device('cpu')
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
 
 
     # train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True)
@@ -152,7 +122,8 @@ def cross_validation_train():
             batch_size=100, sampler=test_subsampler)
 
         # Init the neural network
-        network = SimpleMLP(input_dim, output_dim, device)
+        network = SimpleMLP(input_dim=input_dim, output_dim=output_dim, hidden_sizes=[2048, 2048],
+                            activation='relu', device=device)
         # network.apply(reset_weights)
 
         # Initialize optimizer
@@ -190,9 +161,9 @@ def cross_validation_train():
 
                 # Print statistics
                 current_loss += loss.item()
-                if i % 500 == 499:
+                if i % 50 == 0:
                     print('Loss after mini-batch %5d: %.3f' %
-                          (i + 1, current_loss / 500))
+                          (i + 1, current_loss / 50))
                     current_loss = 0.0
 
         # Process is complete.
