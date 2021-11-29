@@ -81,13 +81,12 @@ def cross_validation_train():
     # Configuration options
     ROI = args.roi
     subject = args.sub
-    k_folds = 5
+    k_folds = 10
     num_epochs = 100
     hidden_sizes = [4096, 4096]
-    batch_size_train = 32
+    batch_size_train = 16
     batch_size_test = 100
     loss_function = nn.MSELoss()
-    work_dir = args.work_dir + "/sub{}/{}".format(subject, ROI)
     layer_ind_to_activation = {
         '1': 'MaxPool3d_2a_3x3',
         '2': 'MaxPool3d_3a_3x3',
@@ -107,7 +106,8 @@ def cross_validation_train():
         '6': 1024,
         '7': 1024,
     }
-
+    work_dir = args.work_dir + "/{}/sub{}/{}".format(layer_ind_to_activation[str(args.layer_ind)], subject, ROI)
+    
     # For fold results
     writer = SummaryWriter(work_dir)
 
@@ -188,7 +188,6 @@ def cross_validation_train():
                 inputs, fmri_train = data
                 inputs = inputs.to(device)
                 fmri_train = fmri_train.to(device)
-                print(inputs.shape, fmri_train.shape)
                 # Zero the gradients
                 optimizer.zero_grad()
 
@@ -215,6 +214,8 @@ def cross_validation_train():
                 for i, data in enumerate(testloader, 0):
                     # Get inputs
                     inputs, fmri_test = data
+                    inputs = inputs.to(device)
+                    fmri_test = fmri_test.to(device)
 
                     # Generate outputs
                     pred_fmri = network(inputs)
@@ -305,7 +306,7 @@ def save_activations():
         fname = os.path.basename(video_fp)[:-4] + ".pkl"
         save_path = os.path.join(work_dir, fname)
         with open(save_path, "wb") as handle:
-            pickle.dump(all_phi, handle)
+            pickle.dump(phi, handle)
         print(i_vid, save_path, "{:.3f}".format(time.time() - tic))
 
 
