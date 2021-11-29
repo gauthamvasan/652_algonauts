@@ -75,7 +75,7 @@ def cross_validation_train():
     subject = args.sub
     k_folds = 5
     num_epochs = 100
-    hidden_sizes = [1024, 1024]
+    hidden_sizes = [4096, 4096]
     batch_size_train = 32
     batch_size_test = 100
     loss_function = nn.MSELoss()
