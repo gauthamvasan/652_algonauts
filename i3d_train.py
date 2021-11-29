@@ -114,17 +114,17 @@ def cross_validation_train():
     # Set fixed random number seed
     torch.manual_seed(42)
 
-    # Prepare MNIST dataset by concatenating Train/Test part; we split later.
-    # save_activations()
+    # base_path = "/Users/gautham/src/652_algonauts"
+    base_path = "/home/vasan/scratch/652_algonauts"
     train_dataset = I3DAlgonautsDataSet(
-        fmri_dir="/Users/gautham/src/652_algonauts/participants_data/participants_data_v2021/mini_track/sub{}".format(subject),
-        ROI=ROI, activations_dir="/Users/gautham/src/652_algonauts/i3d_dir/activations", train=True,
+        fmri_dir=base_path + "/participants_data/participants_data_v2021/mini_track/sub{}".format(subject),
+        ROI=ROI, activations_dir=base_path + "/i3d_dir/activations", train=True,
         i3d_endpoint=layer_ind_to_activation[str(args.layer_ind)]
     )
 
     test_dataset = I3DAlgonautsDataSet(
-        fmri_dir="/Users/gautham/src/652_algonauts/participants_data/participants_data_v2021/mini_track/sub{}".format(subject),
-        ROI=ROI, activations_dir="/Users/gautham/src/652_algonauts/i3d_dir/activations", train=False,
+        fmri_dir=base_path + "/participants_data/participants_data_v2021/mini_track/sub{}".format(subject),
+        ROI=ROI, activations_dir=base_path + "/i3d_dir/activations", train=False,
         i3d_endpoint=layer_ind_to_activation[str(args.layer_ind)]
     )
 
@@ -188,7 +188,7 @@ def cross_validation_train():
                 inputs, fmri_train = data
                 inputs = inputs.to(device)
                 fmri_train = fmri_train.to(device)
-
+                print(inputs.shape, fmri_train.shape)
                 # Zero the gradients
                 optimizer.zero_grad()
 
@@ -251,7 +251,8 @@ def save_activations():
         i3d.load_state_dict(torch.load(fp))
     else:
         # fp = "/Users/gautham/src/pytorch-i3d/models/rgb_imagenet.pt"
-        fp = "/Users/gautham/src/pytorch-i3d/models/rgb_charades.pt"
+        # fp = "/Users/gautham/src/pytorch-i3d/models/rgb_charades.pt"
+        fp = "/home/vasan/scratch/pytorch-i3d/models/rgb_charades.pt"
         i3d = InceptionI3d(157, in_channels=3, final_endpoint="Logits")
         i3d.load_state_dict(torch.load(fp))
     i3d.to(device)
@@ -267,7 +268,7 @@ def save_activations():
     sp_pool = SpatialPyramidPooling(levels=[2, 4, 8], mode='max')
     avg_pool = nn.AvgPool3d(kernel_size=[2, 7, 7], stride=(1, 1, 1))
 
-    for i_vid, video_fp in enumerate(all_vids[:10]):
+    for i_vid, video_fp in enumerate(train_vids):
         tic = time.time()
         video_frames, audio_frames, metadata = torchvision.io.read_video(filename=video_fp)
         video_frames = data_transform(video_frames)
