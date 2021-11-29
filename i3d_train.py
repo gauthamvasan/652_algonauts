@@ -5,6 +5,7 @@ import videotransforms
 import os
 import glob
 import pickle
+import time
 import numpy as np
 
 from i3d_model import InceptionI3d
@@ -17,12 +18,15 @@ from torchvision import transforms
 from sklearn.model_selection import KFold
 from utils.ols import vectorized_correlation
 from tensorboardX import SummaryWriter
+from pyramid_pooling import SpatialPyramidPooling, TemporalPyramidPooling
 
 ROIs = ['LOC','FFA','STS','EBA','PPA','V1','V2','V3','V4']
 
 
-class AlgonautsDataSet(Dataset):
-    def __init__(self, activations_dir, fmri_dir, ROI, transform=None, target_transform=None, train=True):
+class I3DAlgonautsDataSet(Dataset):
+    END_POINTS = ['MaxPool3d_2a_3x3', 'MaxPool3d_3a_3x3', 'MaxPool3d_4a_3x3', 'MaxPool3d_5a_2x2', 'Mixed_5b',
+                  'Mixed_5c', 'Logits']
+    def __init__(self, activations_dir, fmri_dir, ROI, i3d_endpoint="", transform=None, target_transform=None, train=True):
         """
 
         Args:
@@ -32,6 +36,8 @@ class AlgonautsDataSet(Dataset):
             transform:
             target_transform:
         """
+        assert i3d_endpoint in self.END_POINTS
+        self.i3d_endpoint = i3d_endpoint
         self.activations_pkl = glob.glob(activations_dir + "/*.pkl")
         self.activations_pkl.sort()
         assert len(self.activations_pkl) != 0, "activations_dir cannot be empty"
@@ -48,7 +54,7 @@ class AlgonautsDataSet(Dataset):
 
     def __getitem__(self, item):
         fp = self.activations_pkl[item]
-        activations = pickle.load(open(fp, "rb"))
+        activations = pickle.load(open(fp, "rb"))[self.i3d_endpoint]
         voxels = self.fmri_data[item]
         voxels = torch.from_numpy(voxels.astype(np.float32))
         return activations, voxels
@@ -59,20 +65,40 @@ class AlgonautsDataSet(Dataset):
 def cross_validation_train():
     parser = argparse.ArgumentParser(description='Encoding model analysis for Algonauts 2021')
     parser.add_argument('--sub', help='subject number from which real fMRI data will be used', default='01', type=str)
-    parser.add_argument('--roi', help='brain region, from which real fMRI data will be used', default='V1', type=str)
+    parser.add_argument('--roi', help='brain region, from which real fMRI data will be used', default='LOC', type=str)
     parser.add_argument('--work_dir', help='Store results in this dir', default='./i3d_dir', type=str)
+    parser.add_argument('--layer_ind', help='Pick a value in [1, 7]', default=1, type=int)
     args = parser.parse_args()
 
     # Configuration options
     ROI = args.roi
     subject = args.sub
-    k_folds = 10
-    num_epochs = 1000
-    hidden_sizes = [1024, 1024, 1024, 1024]
+    k_folds = 5
+    num_epochs = 100
+    hidden_sizes = [1024, 1024]
     batch_size_train = 32
     batch_size_test = 100
     loss_function = nn.MSELoss()
     work_dir = args.work_dir + "/sub{}/{}".format(subject, ROI)
+    layer_ind_to_activation = {
+        '1': 'MaxPool3d_2a_3x3',
+        '2': 'MaxPool3d_3a_3x3',
+        '3': 'MaxPool3d_4a_3x3',
+        '4': 'MaxPool3d_5a_2x2',
+        '5': 'Mixed_5b',
+        '6': 'Mixed_5c',
+        '7': 'Logits',
+    }
+
+    input_dims = {
+        '1': 930,
+        '2': 930,
+        '3': 1260,
+        '4': 832,
+        '5': 832,
+        '6': 1024,
+        '7': 1024,
+    }
 
     # For fold results
     writer = SummaryWriter(work_dir)
@@ -82,18 +108,20 @@ def cross_validation_train():
 
     # Prepare MNIST dataset by concatenating Train/Test part; we split later.
     # save_activations()
-    train_dataset = AlgonautsDataSet(
+    train_dataset = I3DAlgonautsDataSet(
         fmri_dir="/Users/gautham/src/652_algonauts/participants_data/participants_data_v2021/mini_track/sub{}".format(subject),
-        ROI=ROI, activations_dir="/Users/gautham/src/652_algonauts/i3d_dir/activations", train=True
+        ROI=ROI, activations_dir="/Users/gautham/src/652_algonauts/i3d_dir/activations", train=True,
+        i3d_endpoint=layer_ind_to_activation[str(args.layer_ind)]
     )
 
-    test_dataset = AlgonautsDataSet(
+    test_dataset = I3DAlgonautsDataSet(
         fmri_dir="/Users/gautham/src/652_algonauts/participants_data/participants_data_v2021/mini_track/sub{}".format(subject),
-        ROI=ROI, activations_dir="/Users/gautham/src/652_algonauts/i3d_dir/activations", train=False
+        ROI=ROI, activations_dir="/Users/gautham/src/652_algonauts/i3d_dir/activations", train=False,
+        i3d_endpoint=layer_ind_to_activation[str(args.layer_ind)]
     )
 
     # Env
-    input_dim = 7168    # TODO: Fix hardcoding
+    input_dim = input_dims[str(args.layer_ind)]
     output_dim = train_dataset.fmri_data.shape[1]
     device = torch.device('cpu')
     if torch.cuda.is_available():
@@ -203,6 +231,9 @@ def cross_validation_train():
 def save_activations():
     mode = "rgb"
     work_dir = "./i3d_dir/activations"
+    device = torch.device('cpu')
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
 
     if mode == 'flow':
         fp = "/Users/gautham/src/pytorch-i3d/models/flow_imagenet.pt"
@@ -213,6 +244,7 @@ def save_activations():
         fp = "/Users/gautham/src/pytorch-i3d/models/rgb_charades.pt"
         i3d = InceptionI3d(157, in_channels=3, final_endpoint="Logits")
         i3d.load_state_dict(torch.load(fp))
+    i3d.to(device)
 
     data_transform = transforms.Compose([videotransforms.CenterCrop(224)])
 
@@ -221,7 +253,12 @@ def save_activations():
     train_vids = all_vids[:1000]
     test_vids = all_vids[1000:]
 
-    for i_vid, video_fp in enumerate(all_vids):
+    tp_pool = TemporalPyramidPooling(levels=[1, 2, 4, 8, 16], mode='max')
+    sp_pool = SpatialPyramidPooling(levels=[2, 4, 8], mode='max')
+    avg_pool = nn.AvgPool3d(kernel_size=[2, 7, 7], stride=(1, 1, 1))
+
+    for i_vid, video_fp in enumerate(all_vids[:10]):
+        tic = time.time()
         video_frames, audio_frames, metadata = torchvision.io.read_video(filename=video_fp)
         video_frames = data_transform(video_frames)
         video_frames = torch.permute(video_frames, (3, 0, 1, 2))  # c, t, h, w
@@ -232,15 +269,38 @@ def save_activations():
 
         # pred = i3d(video_frames)
         # phi = torch.mean(pred, axis=-1)
-        phi = i3d.extract_features(video_frames).flatten()
+        last_layer_features, all_phi = i3d.extract_features(video_frames.to(device))
+        phi = {}
+        feat = last_layer_features.view((-1, 7))
+        feat = torch.mean(feat, 1)
+        phi['Logits'] = feat
+
+        end_points = ['MaxPool3d_2a_3x3', 'MaxPool3d_3a_3x3', 'MaxPool3d_4a_3x3', 'MaxPool3d_5a_2x2', 'Mixed_5b', 'Mixed_5c']
+
+        for ep in end_points:
+            if ep in ['MaxPool3d_2a_3x3', 'MaxPool3d_3a_3x3']:
+                feat = tp_pool(all_phi[ep][0]) # [64, 930]
+                feat = torch.mean(feat, 0)
+            elif ep == 'MaxPool3d_4a_3x3':
+                feat = sp_pool(all_phi[ep][0]) # [480, 105]
+                feat = torch.mean(feat, 0)
+            else:
+                feat = avg_pool(all_phi[ep])
+                feat = feat.view((-1, 7))
+                feat = torch.mean(feat, 1)
+            phi[ep] = feat.cpu().ravel()
+            # print(ep, phi[ep].shape)
 
         fname = os.path.basename(video_fp)[:-4] + ".pkl"
         save_path = os.path.join(work_dir, fname)
         with open(save_path, "wb") as handle:
-            pickle.dump(phi, handle)
-        print(i_vid, save_path, phi.shape)
+            pickle.dump(all_phi, handle)
+        print(i_vid, save_path, "{:.3f}".format(time.time() - tic))
 
 
 if __name__ == '__main__':
-    save_activations()
-    # cross_validation_train()
+    tic = time.time()
+    # save_activations()
+    # print("Activation generation took: {:.3f}".format(time.time() - tic))
+    cross_validation_train()
+    print("Training took: {:.3f}".format(time.time() - tic))

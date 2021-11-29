@@ -331,7 +331,9 @@ class InceptionI3d(nn.Module):
         return logits
 
     def extract_features(self, x):
+        all_phi = {}
         for end_point in self.VALID_ENDPOINTS:
             if end_point in self.end_points:
                 x = self._modules[end_point](x)
-        return self.avg_pool(x)
+                all_phi[end_point] = x
+        return self.avg_pool(x), all_phi
