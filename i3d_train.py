@@ -1,3 +1,4 @@
+import argparse
 import torch
 import torchvision
 import videotransforms
@@ -7,9 +8,6 @@ import pickle
 import numpy as np
 
 from pytorch_i3d import InceptionI3d
-from torchvision import transforms, datasets
-from feature_extraction.generate_features_alexnet import sample_video_from_mp4
-from torch.autograd import Variable
 from perform_encoding import get_fmri
 from torch.utils.data import Dataset
 from torch import nn
@@ -18,7 +16,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torchvision import transforms
 from sklearn.model_selection import KFold
 from utils.ols import vectorized_correlation
-
+from tensorboardX import SummaryWriter
 
 ROIs = ['LOC','FFA','STS','EBA','PPA','V1','V2','V3','V4']
 
@@ -59,16 +57,22 @@ class AlgonautsDataSet(Dataset):
         return len(self.fmri_data)
 
 def cross_validation_train():
+    parser = argparse.ArgumentParser(description='Encoding model analysis for Algonauts 2021')
+    parser.add_argument('--sub', help='subject number from which real fMRI data will be used', default='01', type=str)
+    parser.add_argument('--roi', help='brain region, from which real fMRI data will be used', default='V1', type=str)
+    parser.add_argument('--work_dir', help='Store results in this dir', default='./i3d_dir', type=str)
+    args = parser.parse_args()
 
     # Configuration options
     k_folds = 10
     num_epochs = 50
-    ROI = 'V1'
-    subject = '04'
+    ROI = args.roi
+    subject = args.sub
     loss_function = nn.MSELoss()
+    work_dir = args.work_dir + "/sub{}/{}".format(subject, ROI)
 
     # For fold results
-    results = {}
+    writer = SummaryWriter(work_dir)
 
     # Set fixed random number seed
     torch.manual_seed(42)
@@ -127,7 +131,7 @@ def cross_validation_train():
         # network.apply(reset_weights)
 
         # Initialize optimizer
-        optimizer = torch.optim.Adam(network.parameters(), lr=1e-4, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(network.parameters(), lr=3e-4, weight_decay=1e-4)
 
         # Run the training loop for defined number of epochs
         for epoch in range(0, num_epochs):
@@ -136,7 +140,7 @@ def cross_validation_train():
             print(f'Starting epoch {epoch + 1}')
 
             # Set current loss value
-            current_loss = 0.0
+            current_loss = []
 
             # Iterate over the DataLoader for training data
             for i, data in enumerate(trainloader, 0):
@@ -160,11 +164,29 @@ def cross_validation_train():
                 optimizer.step()
 
                 # Print statistics
-                current_loss += loss.item()
-                if i % 50 == 0:
-                    print('Loss after mini-batch %5d: %.3f' %
-                          (i + 1, current_loss / 50))
-                    current_loss = 0.0
+                current_loss.append(loss)
+
+            writer.add_scalar('Loss/train', torch.mean(torch.as_tensor([current_loss])), epoch)
+
+            # Validation
+            with torch.no_grad():
+                # Iterate over the test data and generate predictions
+                for i, data in enumerate(testloader, 0):
+                    # Get inputs
+                    inputs, fmri_test = data
+
+                    # Generate outputs
+                    pred_fmri = network(inputs)
+
+                    # Set total and correct
+                    score = vectorized_correlation(fmri_test, pred_fmri)
+
+                    # Print fold results
+                    print(f'K-FOLD CROSS VALIDATION RESULTS FOR {k_folds} FOLDS')
+                    print('--------------------------------')
+                    print("Mean correlation for ROI: {} in subject {} is: {}".format(ROI, subject, torch.mean(score)))
+
+            writer.add_scalar('Correlation/val', torch.mean(score), epoch)
 
         # Process is complete.
         print('Training process has finished. Saving trained model.')
@@ -173,28 +195,9 @@ def cross_validation_train():
         print('Starting testing')
 
         # Saving the model
-        save_path = f'./model-fold-{fold}.pth'
+        save_path = os.path.join(work_dir, f'./model-fold-{fold}.pth')
         torch.save(network.state_dict(), save_path)
 
-        # Evaluationfor this fold
-        correct, total = 0, 0
-        with torch.no_grad():
-
-            # Iterate over the test data and generate predictions
-            for i, data in enumerate(testloader, 0):
-                # Get inputs
-                inputs, fmri_test = data
-
-                # Generate outputs
-                pred_fmri = network(inputs)
-
-                # Set total and correct
-                score = vectorized_correlation(fmri_test, pred_fmri)
-
-                # Print fold results
-                print(f'K-FOLD CROSS VALIDATION RESULTS FOR {k_folds} FOLDS')
-                print('--------------------------------')
-                print("Mean correlation for ROI: {} in subject {} is: {}".format(ROI, subject, torch.mean(score)))
 
 
 def save_activations():
