@@ -285,7 +285,7 @@ def save_activations():
         phi = {}
         feat = last_layer_features.view((-1, 7))
         feat = torch.mean(feat, 1)
-        phi['Logits'] = feat
+        phi['Logits'] = feat.cpu().ravel()
 
         end_points = ['MaxPool3d_2a_3x3', 'MaxPool3d_3a_3x3', 'MaxPool3d_4a_3x3', 'MaxPool3d_5a_2x2', 'Mixed_5b', 'Mixed_5c']
 
@@ -313,7 +313,7 @@ def save_activations():
 if __name__ == '__main__':
     set_one_thread()    # Handle torch shenanigans
     tic = time.time()
-    # save_activations()
-    # print("Activation generation took: {:.3f}".format(time.time() - tic))
-    cross_validation_train()
-    print("Training took: {:.3f}".format(time.time() - tic))
+    save_activations()
+    print("Activation generation took: {:.3f}".format(time.time() - tic))
+    #cross_validation_train()
+    #print("Training took: {:.3f}".format(time.time() - tic))
