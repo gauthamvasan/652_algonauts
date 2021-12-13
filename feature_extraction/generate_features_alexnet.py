@@ -4,7 +4,7 @@
 # 2. preprocess Alexnet features using PCA and save them in another folder
 ###
 import glob
-from alexnet import *
+from .alexnet import *
 import numpy as np
 import urllib
 import torch
@@ -168,8 +168,9 @@ def do_PCA_and_save(activations_dir, save_dir):
 
 def main():
     parser = argparse.ArgumentParser(description='Feature Extraction from Alexnet and preprocessing using PCA')
-    parser.add_argument('-vdir','--video_data_dir', help='video data directory',default = './AlgonautsVideos268_All_30fpsmax/', type=str)
-    parser.add_argument('-sdir','--save_dir', help='saves processed features',default = './alexnet', type=str)
+    parser.add_argument('-vdir','--video_data_dir', help='video data directory',
+                        default = '../participants_data/AlgonautsVideos268_All_30fpsmax/', type=str)
+    parser.add_argument('-sdir','--save_dir', help='saves processed features', default = './alexnet', type=str)
     args = vars(parser.parse_args())
 
     save_dir=args['save_dir']
